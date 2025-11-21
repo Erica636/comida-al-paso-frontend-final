@@ -2,6 +2,8 @@ import { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext();
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -15,9 +17,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // --------------------------------------------------
-  //   AL INICIAR: VERIFICA SI HAY TOKEN EN LOCALSTORAGE
-  // --------------------------------------------------
+  // Verificar si hay token al iniciar
   useEffect(() => {
     const access = localStorage.getItem('access');
     const refresh = localStorage.getItem('refresh');
@@ -27,16 +27,13 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       setUser(JSON.parse(savedUser));
     }
-
     setLoading(false);
   }, []);
 
-  // --------------------------------------------------
-  //                 LOGIN CON DJANGO
-  // --------------------------------------------------
+  // Login con Django JWT
   const login = async (username, password) => {
     try {
-      const response = await fetch('http://localhost:8000/api/token/', {
+      const response = await fetch(`${API_URL}/token/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -46,13 +43,13 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error: 'Credenciales inválidas' };
       }
 
-      const data = await response.json(); // { access, refresh }
+      const data = await response.json();
 
-      // Guardar tokens reales
+      // Guardar tokens
       localStorage.setItem('access', data.access);
       localStorage.setItem('refresh', data.refresh);
 
-      // Guardar usuario (de forma simple)
+      // Guardar usuario
       const userData = { username };
       localStorage.setItem('user', JSON.stringify(userData));
 
@@ -60,15 +57,12 @@ export const AuthProvider = ({ children }) => {
       setUser(userData);
 
       return { success: true };
-
     } catch (error) {
       return { success: false, error: 'Error de conexión con el servidor' };
     }
   };
 
-  // --------------------------------------------------
-  //                 LOGOUT
-  // --------------------------------------------------
+  // Logout
   const logout = () => {
     localStorage.removeItem('access');
     localStorage.removeItem('refresh');

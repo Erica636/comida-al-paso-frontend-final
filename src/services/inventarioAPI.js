@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = 'http://localhost:8000/api';
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -9,9 +9,10 @@ const api = axios.create({
   },
 });
 
+// Interceptor para agregar el token a las peticiones
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('access'); // 👈 Cambiado de 'token' a 'access'
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -22,19 +23,7 @@ api.interceptors.request.use(
   }
 );
 
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
+// Interceptor para manejar errores
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -44,7 +33,6 @@ api.interceptors.response.use(
 );
 
 export const inventarioAPI = {
- 
   test: async () => {
     try {
       const response = await api.get('/test');
@@ -53,7 +41,7 @@ export const inventarioAPI = {
       throw new Error('Error al probar la conexión con la API');
     }
   },
- 
+
   getCategorias: async () => {
     try {
       const response = await api.get('/categorias');
@@ -74,7 +62,7 @@ export const inventarioAPI = {
       throw new Error('Error al crear categoría');
     }
   },
- 
+
   getProductos: async () => {
     try {
       const response = await api.get('/productos');
