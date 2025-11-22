@@ -1,84 +1,84 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext'; 
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useCarrito } from '../context/CarritoContext';
 
-function Navbar() {
-  const [menuAbierto, setMenuAbierto] = useState(false);
-  const { isAuthenticated, logout } = useAuth(); 
-
-  const toggleMenu = () => setMenuAbierto(!menuAbierto);
-  const cerrarMenu = () => setMenuAbierto(false);
+const Navbar = () => {
+  const { isAuthenticated, user, logout } = useAuth();
+  const { obtenerCantidadTotal } = useCarrito();
+  const navigate = useNavigate();
+  const cantidadItems = obtenerCantidadTotal();
 
   const handleLogout = () => {
     logout();
-    cerrarMenu();
+    navigate('/login');
   };
 
   return (
-    <nav className="bg-orange-500 text-white shadow-lg">
-      <div className="container mx-auto px-4">
-        <div className="flex justify-between items-center py-4">
-          <Link
-            to="/"
-            className="text-2xl font-bold hover:text-orange-200 transition-colors"
-            onClick={cerrarMenu}
-          >
-            🍽️ Comida al Paso
+    <nav className="bg-blue-600 text-white shadow-lg">
+      <div className="container mx-auto px-4 py-3">
+        <div className="flex justify-between items-center">
+          <Link to="/" className="text-2xl font-bold">
+            🍔 Comida al Paso
           </Link>
 
-          <div className="hidden md:flex items-center space-x-6">
-            <Link to="/" className="hover:text-orange-200 transition-colors">Inicio</Link>
-            <Link to="/productos" className="hover:text-orange-200 transition-colors">Productos</Link>
-            <Link to="/about" className="hover:text-orange-200 transition-colors">Acerca de</Link>
-            
+          <div className="flex items-center gap-6">
+            <Link to="/" className="hover:text-blue-200">
+              Inicio
+            </Link>
+            <Link to="/products" className="hover:text-blue-200">
+              Productos
+            </Link>
+
+            {isAuthenticated && (
+              <Link to="/carrito" className="hover:text-blue-200 relative">
+                <span className="text-xl">🛒</span>
+                {cantidadItems > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                    {cantidadItems}
+                  </span>
+                )}
+              </Link>
+            )}
+
+            {user?.is_staff && (
+              <Link to="/dashboard" className="hover:text-blue-200">
+                Dashboard
+              </Link>
+            )}
+
             {isAuthenticated ? (
-              <>
-                <Link to="/dashboard" className="hover:text-orange-200 transition-colors">Dashboard</Link>
-                <button onClick={handleLogout} className="hover:text-orange-200 transition-colors">
-                  Cerrar sesión
+              <div className="flex items-center gap-4">
+                <span className="text-sm">
+                  Hola, {user?.username}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded"
+                >
+                  Cerrar Sesión
                 </button>
-              </>
+              </div>
             ) : (
-              <>
-                <Link to="/login" className="hover:text-orange-200 transition-colors">Iniciar sesión</Link>
-                <Link to="/register" className="hover:text-white bg-white text-orange-500 px-3 py-1 rounded hover:bg-orange-200 transition">
+              <div className="flex gap-2">
+                <Link
+                  to="/login"
+                  className="bg-white text-blue-600 px-4 py-2 rounded hover:bg-gray-100"
+                >
+                  Iniciar Sesión
+                </Link>
+                <Link
+                  to="/register"
+                  className="bg-blue-700 px-4 py-2 rounded hover:bg-blue-800"
+                >
                   Registrarse
                 </Link>
-              </>
+              </div>
             )}
           </div>
-
-          <button className="md:hidden text-2xl" onClick={toggleMenu}>
-            {menuAbierto ? '✕' : '☰'}
-          </button>
         </div>
       </div>
-
-      {menuAbierto && (
-        <div className="md:hidden pb-4 space-y-2 px-4 bg-orange-500 z-50">
-          <Link to="/" className="block py-2 hover:text-orange-200 transition-colors" onClick={cerrarMenu}>Inicio</Link>
-          <Link to="/productos" className="block py-2 hover:text-orange-200 transition-colors" onClick={cerrarMenu}>Productos</Link>
-          <Link to="/about" className="block py-2 hover:text-orange-200 transition-colors" onClick={cerrarMenu}>Acerca de</Link>
-          
-          {isAuthenticated ? (
-            <>
-              <Link to="/dashboard" className="block py-2 hover:text-orange-200 transition-colors" onClick={cerrarMenu}>Dashboard</Link>
-              <button onClick={handleLogout} className="block py-2 hover:text-orange-200 transition-colors w-full text-left">
-                Cerrar sesión
-              </button>
-            </>
-          ) : (
-            <>
-              <Link to="/login" className="block py-2 hover:text-orange-200 transition-colors" onClick={cerrarMenu}>Iniciar sesión</Link>
-              <Link to="/register" className="block py-2 bg-white text-orange-500 rounded text-center hover:bg-orange-200 transition" onClick={cerrarMenu}>
-                Registrarse
-              </Link>
-            </>
-          )}
-        </div>
-      )}
     </nav>
   );
-}
+};
 
 export default Navbar;

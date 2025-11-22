@@ -11,17 +11,19 @@ function Login() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from?.pathname || '/dashboard';
 
   useEffect(() => {
     document.title = 'Comida al Paso - Iniciar Sesión';
-    if (isAuthenticated) {
+    if (isAuthenticated && user) {
+      // Redirigir según el tipo de usuario
+      const destino = user.is_staff ? '/dashboard' : '/products';
+      const from = location.state?.from?.pathname || destino;
       navigate(from, { replace: true });
     }
-  }, [isAuthenticated, navigate, from]);
+  }, [isAuthenticated, user, navigate, location]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -41,11 +43,10 @@ function Login() {
     }
 
     const result = await login(formData.username, formData.password);
-    if (result.success) {
-      navigate(from, { replace: true });
-    } else {
+    if (!result.success) {
       setError(result.error);
     }
+    // La redirección se maneja en el useEffect cuando cambie isAuthenticated y user
     setLoading(false);
   };
 
@@ -56,7 +57,7 @@ function Login() {
           <h1 className="text-4xl font-bold text-gray-800 mb-2">🍽️ Comida al Paso</h1>
           <h2 className="text-2xl font-semibold text-gray-600">Iniciar Sesión</h2>
         </div>
-        
+
         <Card className="p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
@@ -64,7 +65,7 @@ function Login() {
                 {error}
               </div>
             )}
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Usuario
@@ -76,10 +77,10 @@ function Login() {
                 value={formData.username}
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                placeholder="Usuario: kminchelle"
+                placeholder="Tu nombre de usuario"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Contraseña
@@ -91,15 +92,15 @@ function Login() {
                 value={formData.password}
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                placeholder="Contraseña: 0lelplR"
+                placeholder="Tu contraseña"
               />
             </div>
-            
+
             <Button type="submit" className="w-full py-3" disabled={loading}>
               {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
             </Button>
           </form>
-          
+
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               ¿No tienes cuenta?{' '}
@@ -115,4 +116,3 @@ function Login() {
 }
 
 export default Login;
-

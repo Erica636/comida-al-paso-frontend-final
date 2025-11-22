@@ -2,26 +2,35 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../components/Button';
 import ProductCard from '../components/ProductCard';
-import { productosData } from '../data/productos';
+import inventarioAPI from '../services/inventarioAPI';
 
 function Home() {
     const [contador, setContador] = useState(0);
     const [mensajeBienvenida, setMensajeBienvenida] = useState('');
+    const [productosDestacados, setProductosDestacados] = useState([]);
     const navigate = useNavigate();
 
     useEffect(() => {
         document.title = "Comida al Paso - Inicio";
-        console.log("Componente Home montado - useEffect ejecutado");
 
-        return () => {
-            console.log("Componente Home desmontado");
+        // Cargar productos destacados desde la API
+        const cargarProductos = async () => {
+            try {
+                const data = await inventarioAPI.getProductos();
+                const productos = data.results || data;
+                // Tomar los primeros 3 productos con stock
+                const destacados = productos.filter(p => p.stock > 0).slice(0, 3);
+                setProductosDestacados(destacados);
+            } catch (error) {
+                console.error('Error al cargar productos:', error);
+            }
         };
+
+        cargarProductos();
     }, []);
 
     useEffect(() => {
         if (contador > 0) {
-            console.log(`Contador actualizado: ${contador} visitantes`);
-
             if (contador === 1) {
                 setMensajeBienvenida('¡Primer visitante del día! 🎉');
             } else if (contador === 10) {
@@ -34,8 +43,6 @@ function Home() {
         }
     }, [contador]);
 
-    const productosDestacados = productosData.filter(p => p.disponible).slice(0, 3);
-
     const incrementarContador = () => {
         setContador(contador + 1);
     };
@@ -46,15 +53,11 @@ function Home() {
     };
 
     const navegarAProductos = () => {
-        navigate('/productos');
-    };
-
-    const navegarAProducto = (id) => {
-        navigate(`/productos/${id}`);
+        navigate('/products');
     };
 
     return (
-        <div>
+        <div className="container mx-auto px-4 py-8">
             <section className="text-center mb-12">
                 <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">
                     Bienvenido a Comida al Paso
@@ -101,7 +104,6 @@ function Home() {
                         <ProductCard
                             key={producto.id}
                             producto={producto}
-                            onClick={navegarAProducto}
                         />
                     ))}
                 </div>

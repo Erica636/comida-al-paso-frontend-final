@@ -1,317 +1,623 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import Button from '../components/Button';
-import Card from '../components/Card';
-import { inventarioAPI } from '../services/inventarioAPI';
+import inventarioAPI from '../services/inventarioAPI';
 
-function Dashboard() {
-  const { user, logout } = useAuth();
-
-  // Estados
-  const [activeTab, setActiveTab] = useState('productos');
+const Dashboard = () => {
   const [productos, setProductos] = useState([]);
   const [categorias, setCategorias] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  // ========== PAGINACIÓN ==========
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalProductos, setTotalProductos] = useState(0);
+  const pageSize = 10;
+
+  // ========== FILTROS ==========
+  const [searchTerm, setSearchTerm] = useState('');
+  const [categoriaFilter, setCategoriaFilter] = useState('');
 
   // Estados para formularios
-  const [newCategoria, setNewCategoria] = useState({ nombre: '', descripcion: '' });
-  const [newProducto, setNewProducto] = useState({
-    nombre_producto: '',
-    nombre_categoria: '',
+  const [showProductoForm, setShowProductoForm] = useState(false);
+  const [showCategoriaForm, setShowCategoriaForm] = useState(false);
+  const [modoEdicion, setModoEdicion] = useState(false);
+  const [productoEditando, setProductoEditando] = useState(null);
+
+  // Estados para modales
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [productoAEliminar, setProductoAEliminar] = useState(null);
+
+  // Formulario de producto
+  const [formProducto, setFormProducto] = useState({
+    nombre: '',
+    categoria: '',
     precio: '',
     stock: ''
   });
 
+  // Formulario de categoría
+  const [formCategoria, setFormCategoria] = useState({
+    nombre: '',
+    descripcion: ''
+  });
+
+  // Cargar categorías al montar
   useEffect(() => {
-    document.title = 'Comida al Paso - Dashboard Admin';
-    loadData();
+    const fetchCategorias = async () => {
+      try {
+        const data = await inventarioAPI.getCategorias();
+        setCategorias(data.results || data);
+      } catch (error) {
+        console.error('Error al cargar categorías:', error);
+      }
+    };
+    fetchCategorias();
   }, []);
 
-  const loadData = async () => {
-    setLoading(true);
+  // Cargar productos cuando cambia página o filtros
+  useEffect(() => {
+    cargarProductos();
+  }, [currentPage, searchTerm, categoriaFilter]);
+
+  const cargarProductos = async () => {
     try {
-      const [productosData, categoriasData] = await Promise.all([
-        inventarioAPI.getProductos(),
-        inventarioAPI.getCategorias()
-      ]);
+      setLoading(true);
+      const filters = {};
+      if (searchTerm) filters.search = searchTerm;
+      if (categoriaFilter) filters.categoria = categoriaFilter;
 
-      // Extraer el array de results si viene paginado
-      const productos = productosData.results || productosData;
-      const categorias = categoriasData.results || categoriasData;
+      const data = await inventarioAPI.getProductos(currentPage, pageSize, filters);
 
-      setProductos(Array.isArray(productos) ? productos : []);
-      setCategorias(Array.isArray(categorias) ? categorias : []);
-    } catch (err) {
-      setError('Error al cargar datos');
-      console.error(err);
+      setProductos(data.results || data);
+      setTotalProductos(data.count || data.length);
+      setTotalPages(Math.ceil((data.count || data.length) / pageSize));
+    } catch (error) {
+      console.error('Error al cargar productos:', error);
+      alert('Error al cargar productos');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateCategoria = async (e) => {
+  // ========== HANDLERS DE PAGINACIÓN ==========
+  const handlePrevPage = () => {
+    if (currentPage > 1) setCurrentPage(currentPage - 1);
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) setCurrentPage(currentPage + 1);
+  };
+
+  const handlePageClick = (page) => {
+    setCurrentPage(page);
+  };
+
+  // Reset página al cambiar filtros
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+    setCurrentPage(1);
+  };
+
+  const handleCategoriaFilterChange = (e) => {
+    setCategoriaFilter(e.target.value);
+    setCurrentPage(1);
+  };
+
+  // Generar números de página
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let end = Math.min(totalPages, start + maxVisible - 1);
+
+    if (end - start + 1 < maxVisible) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    return pages;
+  };
+
+  // Manejar cambios en formulario de producto
+  const handleProductoChange = (e) => {
+    setFormProducto({
+      ...formProducto,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  // Manejar cambios en formulario de categoría
+  const handleCategoriaChange = (e) => {
+    setFormCategoria({
+      ...formCategoria,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  // Crear o actualizar producto
+  const handleSubmitProducto = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
+
+    if (!formProducto.nombre || !formProducto.categoria || !formProducto.precio || formProducto.stock === '') {
+      alert('Por favor completa todos los campos');
+      return;
+    }
+
+    if (parseFloat(formProducto.precio) <= 0) {
+      alert('El precio debe ser mayor a 0');
+      return;
+    }
+
+    if (parseInt(formProducto.stock) < 0) {
+      alert('El stock no puede ser negativo');
+      return;
+    }
 
     try {
-      await inventarioAPI.createCategoria(newCategoria.nombre, newCategoria.descripcion);
-      setSuccess('Categoría creada exitosamente');
-      setNewCategoria({ nombre: '', descripcion: '' });
-      loadData();
-    } catch (err) {
-      setError('Error al crear categoría');
+      if (modoEdicion && productoEditando) {
+        await inventarioAPI.updateProducto(productoEditando.id, formProducto);
+        alert('Producto actualizado correctamente');
+      } else {
+        await inventarioAPI.createProducto(formProducto);
+        alert('Producto creado correctamente');
+      }
+
+      setFormProducto({ nombre: '', categoria: '', precio: '', stock: '' });
+      setShowProductoForm(false);
+      setModoEdicion(false);
+      setProductoEditando(null);
+      cargarProductos();
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error al guardar el producto');
     }
   };
 
-  const handleCreateProducto = async (e) => {
+  // Crear categoría
+  const handleSubmitCategoria = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
+
+    if (!formCategoria.nombre) {
+      alert('El nombre de la categoría es obligatorio');
+      return;
+    }
 
     try {
-      await inventarioAPI.createProducto(newProducto);
-      setSuccess('Producto creado exitosamente');
-      setNewProducto({ nombre_producto: '', nombre_categoria: '', precio: '', stock: '' });
-      loadData();
-    } catch (err) {
-      setError('Error al crear producto');
+      await inventarioAPI.createCategoria(formCategoria.nombre, formCategoria.descripcion);
+      alert('Categoría creada correctamente');
+      setFormCategoria({ nombre: '', descripcion: '' });
+      setShowCategoriaForm(false);
+      // Recargar categorías
+      const data = await inventarioAPI.getCategorias();
+      setCategorias(data.results || data);
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error al crear la categoría');
     }
   };
 
-  const handleLogout = () => {
-    logout();
+  // Abrir formulario para editar producto
+  const handleEditarProducto = (producto) => {
+    setModoEdicion(true);
+    setProductoEditando(producto);
+    setFormProducto({
+      nombre: producto.nombre,
+      categoria: producto.categoria?.id || producto.categoria,
+      precio: producto.precio,
+      stock: producto.stock
+    });
+    setShowProductoForm(true);
   };
+
+  // Abrir modal de confirmación de eliminación
+  const handleAbrirModalEliminar = (producto) => {
+    setProductoAEliminar(producto);
+    setShowDeleteModal(true);
+  };
+
+  // Eliminar producto
+  const handleEliminarProducto = async () => {
+    if (!productoAEliminar) return;
+
+    try {
+      await inventarioAPI.deleteProducto(productoAEliminar.id);
+      alert('Producto eliminado correctamente');
+      setShowDeleteModal(false);
+      setProductoAEliminar(null);
+      cargarProductos();
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error al eliminar el producto');
+    }
+  };
+
+  // Cancelar edición
+  const handleCancelarEdicion = () => {
+    setShowProductoForm(false);
+    setModoEdicion(false);
+    setProductoEditando(null);
+    setFormProducto({ nombre: '', categoria: '', precio: '', stock: '' });
+  };
+
+  const formatearPrecio = (precio) => {
+    return new Intl.NumberFormat('es-CL', {
+      style: 'currency',
+      currency: 'CLP'
+    }).format(precio);
+  };
+
+  if (loading && productos.length === 0) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-800">
-            Dashboard - Panel de Administración
-          </h1>
-          <p className="text-gray-600">
-            Bienvenido, {user?.username}
-          </p>
-        </div>
-        <Button variant="danger" onClick={handleLogout}>
-          Cerrar Sesión
-        </Button>
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold mb-8">Dashboard de Administración</h1>
+
+      {/* Botones para abrir formularios */}
+      <div className="flex gap-4 mb-8">
+        <button
+          onClick={() => {
+            setModoEdicion(false);
+            setProductoEditando(null);
+            setFormProducto({ nombre: '', categoria: '', precio: '', stock: '' });
+            setShowProductoForm(!showProductoForm);
+          }}
+          className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+        >
+          {showProductoForm && !modoEdicion ? 'Cancelar' : 'Nuevo Producto'}
+        </button>
+        <button
+          onClick={() => setShowCategoriaForm(!showCategoriaForm)}
+          className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
+        >
+          {showCategoriaForm ? 'Cancelar' : 'Nueva Categoría'}
+        </button>
       </div>
 
-      {/* Alertas */}
-      {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-          {success}
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div className="mb-6 border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setActiveTab('productos')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'productos'
-              ? 'border-orange-500 text-orange-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-          >
-            Productos ({productos.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('categorias')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'categorias'
-              ? 'border-orange-500 text-orange-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-          >
-            Categorías ({categorias.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('crear')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'crear'
-              ? 'border-orange-500 text-orange-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-          >
-            Crear Nuevo
-          </button>
-        </nav>
-      </div>
-
-      {/* Contenido de Tabs */}
-      {loading ? (
-        <Card className="p-8 text-center">
-          <p className="text-gray-600">Cargando...</p>
-        </Card>
-      ) : (
-        <>
-          {/* Tab Productos */}
-          {activeTab === 'productos' && (
-            <Card className="p-6">
-              <h2 className="text-xl font-semibold mb-4 text-orange-600">
-                Lista de Productos
-              </h2>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categoría</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Precio</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {productos.map((producto, index) => (
-                      <tr key={index}>
-                        <td className="px-6 py-4 whitespace-nowrap">{producto.nombre}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{producto.categoria}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">${producto.precio}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{producto.stock}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+      {/* Formulario de Producto */}
+      {showProductoForm && (
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+          <h2 className="text-xl font-bold mb-4">
+            {modoEdicion ? 'Editar Producto' : 'Crear Nuevo Producto'}
+          </h2>
+          <form onSubmit={handleSubmitProducto}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-700 mb-2">Nombre *</label>
+                <input
+                  type="text"
+                  name="nombre"
+                  value={formProducto.nombre}
+                  onChange={handleProductoChange}
+                  className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Nombre del producto"
+                  required
+                />
               </div>
-            </Card>
-          )}
-
-          {/* Tab Categorías */}
-          {activeTab === 'categorias' && (
-            <Card className="p-6">
-              <h2 className="text-xl font-semibold mb-4 text-orange-600">
-                Lista de Categorías
-              </h2>
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {categorias.map((categoria) => (
-                  <div key={categoria.id} className="border rounded-lg p-4 hover:shadow-md transition">
-                    <h3 className="font-semibold text-lg">{categoria.nombre}</h3>
-                    <p className="text-gray-600 text-sm mt-2">{categoria.descripcion}</p>
-                  </div>
-                ))}
+              <div>
+                <label className="block text-gray-700 mb-2">Categoría *</label>
+                <select
+                  name="categoria"
+                  value={formProducto.categoria}
+                  onChange={handleProductoChange}
+                  className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Seleccionar categoría</option>
+                  {categorias.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.nombre}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </Card>
-          )}
-
-          {/* Tab Crear */}
-          {activeTab === 'crear' && (
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Crear Categoría */}
-              <Card className="p-6">
-                <h2 className="text-xl font-semibold mb-4 text-orange-600">
-                  Crear Nueva Categoría
-                </h2>
-                <form onSubmit={handleCreateCategoria} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Nombre *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={newCategoria.nombre}
-                      onChange={(e) => setNewCategoria({ ...newCategoria, nombre: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Descripción
-                    </label>
-                    <textarea
-                      value={newCategoria.descripcion}
-                      onChange={(e) => setNewCategoria({ ...newCategoria, descripcion: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      rows="3"
-                    />
-                  </div>
-                  <Button type="submit" className="w-full">
-                    Crear Categoría
-                  </Button>
-                </form>
-              </Card>
-
-              {/* Crear Producto */}
-              <Card className="p-6">
-                <h2 className="text-xl font-semibold mb-4 text-orange-600">
-                  Crear Nuevo Producto
-                </h2>
-                <form onSubmit={handleCreateProducto} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Nombre del Producto *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={newProducto.nombre_producto}
-                      onChange={(e) => setNewProducto({ ...newProducto, nombre_producto: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Categoría *
-                    </label>
-                    <select
-                      required
-                      value={newProducto.nombre_categoria}
-                      onChange={(e) => setNewProducto({ ...newProducto, nombre_categoria: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="">Seleccionar categoría</option>
-                      {categorias.map((cat) => (
-                        <option key={cat.id} value={cat.nombre}>
-                          {cat.nombre}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Precio *
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      value={newProducto.precio}
-                      onChange={(e) => setNewProducto({ ...newProducto, precio: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Stock *
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      value={newProducto.stock}
-                      onChange={(e) => setNewProducto({ ...newProducto, stock: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    />
-                  </div>
-                  <Button type="submit" className="w-full">
-                    Crear Producto
-                  </Button>
-                </form>
-              </Card>
+              <div>
+                <label className="block text-gray-700 mb-2">Precio *</label>
+                <input
+                  type="number"
+                  name="precio"
+                  value={formProducto.precio}
+                  onChange={handleProductoChange}
+                  className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="0"
+                  min="1"
+                  step="1"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-gray-700 mb-2">Stock *</label>
+                <input
+                  type="number"
+                  name="stock"
+                  value={formProducto.stock}
+                  onChange={handleProductoChange}
+                  className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="0"
+                  min="0"
+                  required
+                />
+              </div>
             </div>
-          )}
-        </>
+            <div className="flex gap-3 mt-6">
+              <button
+                type="submit"
+                className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+              >
+                {modoEdicion ? 'Actualizar Producto' : 'Crear Producto'}
+              </button>
+              {modoEdicion && (
+                <button
+                  type="button"
+                  onClick={handleCancelarEdicion}
+                  className="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600"
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Formulario de Categoría */}
+      {showCategoriaForm && (
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+          <h2 className="text-xl font-bold mb-4">Crear Nueva Categoría</h2>
+          <form onSubmit={handleSubmitCategoria}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-700 mb-2">Nombre *</label>
+                <input
+                  type="text"
+                  name="nombre"
+                  value={formCategoria.nombre}
+                  onChange={handleCategoriaChange}
+                  className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Nombre de la categoría"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-gray-700 mb-2">Descripción</label>
+                <input
+                  type="text"
+                  name="descripcion"
+                  value={formCategoria.descripcion}
+                  onChange={handleCategoriaChange}
+                  className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Descripción opcional"
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              className="mt-6 bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
+            >
+              Crear Categoría
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* ========== FILTROS ========== */}
+      <div className="bg-white p-4 rounded-lg shadow mb-6 flex flex-wrap gap-4">
+        <input
+          type="text"
+          placeholder="Buscar por nombre..."
+          value={searchTerm}
+          onChange={handleSearchChange}
+          className="flex-1 min-w-[200px] px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <select
+          value={categoriaFilter}
+          onChange={handleCategoriaFilterChange}
+          className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Todas las categorías</option>
+          {categorias.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.nombre}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Tabla de Productos */}
+      <div className="bg-white rounded-lg shadow-md overflow-hidden mb-6">
+        <div className="px-6 py-4 bg-gray-50 border-b">
+          <h2 className="text-xl font-bold">Productos ({totalProductos})</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">ID</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Nombre</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Categoría</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Precio</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Stock</th>
+                <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {productos.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                    No hay productos registrados
+                  </td>
+                </tr>
+              ) : (
+                productos.map((producto) => (
+                  <tr key={producto.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm">{producto.id}</td>
+                    <td className="px-6 py-4 text-sm font-medium">{producto.nombre}</td>
+                    <td className="px-6 py-4 text-sm">
+                      {producto.categoria?.nombre || producto.categoria}
+                    </td>
+                    <td className="px-6 py-4 text-sm">{formatearPrecio(producto.precio)}</td>
+                    <td className="px-6 py-4 text-sm">
+                      <span
+                        className={`px-2 py-1 rounded text-xs font-semibold ${producto.stock > 10
+                            ? 'bg-green-100 text-green-800'
+                            : producto.stock > 0
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}
+                      >
+                        {producto.stock}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-center">
+                      <div className="flex justify-center gap-2">
+                        <button
+                          onClick={() => handleEditarProducto(producto)}
+                          className="bg-yellow-500 text-white px-3 py-1 rounded text-sm hover:bg-yellow-600"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => handleAbrirModalEliminar(producto)}
+                          className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ========== PAGINACIÓN ========== */}
+      {totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
+          <p className="text-sm text-gray-600">
+            Mostrando {(currentPage - 1) * pageSize + 1} -{' '}
+            {Math.min(currentPage * pageSize, totalProductos)} de {totalProductos} productos
+          </p>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrevPage}
+              disabled={currentPage === 1}
+              className={`px-3 py-2 rounded-lg ${currentPage === 1
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-white text-gray-700 hover:bg-gray-100 border'
+                }`}
+            >
+              Anterior
+            </button>
+
+            {getPageNumbers().map((page) => (
+              <button
+                key={page}
+                onClick={() => handlePageClick(page)}
+                className={`px-3 py-2 rounded-lg ${currentPage === page
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-100 border'
+                  }`}
+              >
+                {page}
+              </button>
+            ))}
+
+            <button
+              onClick={handleNextPage}
+              disabled={currentPage === totalPages}
+              className={`px-3 py-2 rounded-lg ${currentPage === totalPages
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-white text-gray-700 hover:bg-gray-100 border'
+                }`}
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tabla de Categorías */}
+      <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        <div className="px-6 py-4 bg-gray-50 border-b">
+          <h2 className="text-xl font-bold">Categorías ({categorias.length})</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">ID</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Nombre</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Descripción</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {categorias.length === 0 ? (
+                <tr>
+                  <td colSpan="3" className="px-6 py-8 text-center text-gray-500">
+                    No hay categorías registradas
+                  </td>
+                </tr>
+              ) : (
+                categorias.map((categoria) => (
+                  <tr key={categoria.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm">{categoria.id}</td>
+                    <td className="px-6 py-4 text-sm font-medium">{categoria.nombre}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {categoria.descripcion || '-'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal de Confirmación de Eliminación */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold mb-4">Confirmar Eliminación</h3>
+            <p className="text-gray-600 mb-6">
+              ¿Estás seguro de que deseas eliminar el producto{' '}
+              <strong>"{productoAEliminar?.nombre}"</strong>?
+            </p>
+            <p className="text-red-600 text-sm mb-6">
+              Esta acción no se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setProductoAEliminar(null);
+                }}
+                className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleEliminarProducto}
+                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
-}
+};
 
 export default Dashboard;

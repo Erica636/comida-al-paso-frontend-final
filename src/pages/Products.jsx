@@ -1,218 +1,224 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import inventarioAPI from '../services/inventarioAPI';
 import ProductCard from '../components/ProductCard';
-import Button from '../components/Button';
-import { inventarioAPI } from '../services/inventarioAPI';
 
-const categoriasEmojis = {
-  'Hamburguesas': '🍔',
-  'Pizzas': '🍕', 
-  'Empanadas': '🥟',
-  'Parrilla': '🥩',
-  'Pastas': '🍝',
-  'Ensaladas': '🥗',
-  'Bebidas': '🥤',
-  'Postres': '🍰'
-};
-
-function Products() {
+const Products = () => {
     const [productos, setProductos] = useState([]);
+    const [todosProductos, setTodosProductos] = useState([]);
     const [categorias, setCategorias] = useState([]);
-    const [filtro, setFiltro] = useState('todos');
-    const [busqueda, setBusqueda] = useState('');
-    const [ordenamiento, setOrdenamiento] = useState('nombre');
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const navigate = useNavigate();
+    const [error, setError] = useState(null);
+    const [paginaActual, setPaginaActual] = useState(1);
+    const [totalPaginas, setTotalPaginas] = useState(1);
+    const [busqueda, setBusqueda] = useState('');
+    const [categoriaSeleccionada, setCategoriaSeleccionada] = useState('');
+    const productosPorPagina = 10;
 
+    // Cargar todo al inicio
     useEffect(() => {
-        document.title = "Comida al Paso - Productos";
+        const cargarDatos = async () => {
+            try {
+                setLoading(true);
+                setError(null);
+
+                // Cargar categorías, productos paginados y todos los productos
+                const [categoriasData, productosData, todosData] = await Promise.all([
+                    inventarioAPI.getCategorias(),
+                    inventarioAPI.getProductos(1, productosPorPagina),
+                    inventarioAPI.getAllProductos()
+                ]);
+
+                setCategorias(categoriasData.results || categoriasData || []);
+                setProductos(productosData.results || productosData || []);
+                setTotalPaginas(Math.ceil((productosData.count || 0) / productosPorPagina));
+                setTodosProductos(todosData.results || todosData || []);
+
+            } catch (err) {
+                console.error('Error al cargar datos:', err);
+                setError('Error al cargar los productos. Verifica que el servidor esté corriendo.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
         cargarDatos();
     }, []);
 
-    const cargarDatos = async () => {
-        try {
-            setLoading(true);
-            setError('');
-            
-            const [productosData, categoriasData] = await Promise.all([
-                inventarioAPI.getProductos(),
-                inventarioAPI.getCategorias()
-            ]);
+    // Cargar productos cuando cambia la página
+    useEffect(() => {
+        if (paginaActual === 1) return; // Ya se cargó en el useEffect inicial
 
-            const productosTransformados = productosData.map((producto, index) => ({
-                id: `${producto.nombre.replace(/\s+/g, '-')}-${index}`,
-                nombre: producto.nombre,
-                precio: producto.precio,
-                categoria: producto.categoria.toLowerCase(),
-                imagen: categoriasEmojis[producto.categoria] || '🍽️',
-                descripcion: producto.descripcion || 'Delicioso producto de nuestro menú',
-                disponible: producto.stock > 0,
-                stock: producto.stock
-            }));
+        const cargarPagina = async () => {
+            try {
+                const data = await inventarioAPI.getProductos(paginaActual, productosPorPagina);
+                setProductos(data.results || data || []);
+            } catch (err) {
+                console.error('Error al cargar página:', err);
+            }
+        };
 
-            setProductos(productosTransformados);
-            setCategorias(categoriasData);
-            
-        } catch (error) {
-            console.error('Error al cargar datos:', error);
-            setError('Error al cargar los productos. Verifica la conexión con el servidor.');
-        } finally {
-            setLoading(false);
+        cargarPagina();
+    }, [paginaActual]);
+
+    // Filtrar productos localmente
+    const hayFiltros = busqueda.trim() || categoriaSeleccionada;
+
+    const productosMostrados = (hayFiltros ? todosProductos : productos).filter(p => {
+        const coincideBusqueda = !busqueda.trim() ||
+            p.nombre.toLowerCase().includes(busqueda.toLowerCase());
+        const coincideCategoria = !categoriaSeleccionada ||
+            p.categoria === parseInt(categoriaSeleccionada) ||
+            p.categoria_nombre === categoriaSeleccionada;
+        return coincideBusqueda && coincideCategoria;
+    });
+
+    const cambiarPagina = (nuevaPagina) => {
+        if (nuevaPagina >= 1 && nuevaPagina <= totalPaginas) {
+            setPaginaActual(nuevaPagina);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     };
 
-    const categoriasUnicas = ['todos', ...new Set(productos.map(p => p.categoria))];
+    const generarNumerosPagina = () => {
+        const paginas = [];
+        const maxVisible = 5;
 
-    let productosFiltrados = productos.filter(producto => {
-        const coincideFiltro = filtro === 'todos' || producto.categoria === filtro;
-        const coincideBusqueda = 
-            producto.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-            producto.descripcion.toLowerCase().includes(busqueda.toLowerCase());
-        return coincideFiltro && coincideBusqueda;
-    });
+        let inicio = Math.max(1, paginaActual - Math.floor(maxVisible / 2));
+        let fin = Math.min(totalPaginas, inicio + maxVisible - 1);
 
-    productosFiltrados.sort((a, b) => {
-        switch (ordenamiento) {
-            case 'precio-asc':
-                return a.precio - b.precio;
-            case 'precio-desc':
-                return b.precio - a.precio;
-            case 'nombre':
-            default:
-                return a.nombre.localeCompare(b.nombre);
+        if (fin - inicio + 1 < maxVisible) {
+            inicio = Math.max(1, fin - maxVisible + 1);
         }
-    });
 
-    const navegarAProducto = (id) => {
-        navigate(`/productos/${id}`);
+        for (let i = inicio; i <= fin; i++) {
+            paginas.push(i);
+        }
+        return paginas;
     };
 
     const limpiarFiltros = () => {
-        setFiltro('todos');
         setBusqueda('');
-        setOrdenamiento('nombre');
+        setCategoriaSeleccionada('');
     };
 
     if (loading) {
         return (
-            <div className="flex justify-center items-center min-h-screen">
-                <div className="text-center">
-                    <div className="text-6xl mb-4">🍽️</div>
-                    <div className="text-xl text-gray-600">Cargando productos...</div>
-                </div>
+            <div className="container mx-auto px-4 py-8">
+                <div className="text-center text-gray-500">Cargando productos...</div>
             </div>
         );
     }
 
     if (error) {
         return (
-            <div className="max-w-2xl mx-auto text-center py-12">
-                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                    <strong>Error de conexión:</strong> {error}
-                </div>
-                <Button onClick={cargarDatos}>
-                    🔄 Reintentar Conexión
-                </Button>
+            <div className="container mx-auto px-4 py-8">
+                <div className="text-center text-red-500">{error}</div>
             </div>
         );
     }
 
     return (
-        <div>
-            <h1 className="text-3xl font-bold text-gray-800 mb-8">
-                Nuestros Productos
-            </h1>
+        <div className="container mx-auto px-4 py-8">
+            <h1 className="text-3xl font-bold mb-6">Nuestros Productos</h1>
 
-            <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-                <div className="grid md:grid-cols-4 gap-4 items-end">
+            {/* Filtros */}
+            <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Buscar:
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Buscar producto
                         </label>
                         <input
                             type="text"
-                            placeholder="Buscar productos..."
                             value={busqueda}
                             onChange={(e) => setBusqueda(e.target.value)}
-                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-300"
+                            placeholder="Nombre del producto..."
+                            className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Categoría:
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Categoría
                         </label>
                         <select
-                            value={filtro}
-                            onChange={(e) => setFiltro(e.target.value)}
-                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-300"
+                            value={categoriaSeleccionada}
+                            onChange={(e) => setCategoriaSeleccionada(e.target.value)}
+                            className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
-                            {categoriasUnicas.map(categoria => (
-                                <option key={categoria} value={categoria}>
-                                    {categoria === 'todos' ? 'Todas las categorías' :
-                                     categoria.charAt(0).toUpperCase() + categoria.slice(1)}
+                            <option value="">Todas las categorías</option>
+                            {categorias.map((cat) => (
+                                <option key={cat.id} value={cat.id}>
+                                    {cat.nombre}
                                 </option>
                             ))}
                         </select>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Ordenar por:
-                        </label>
-                        <select
-                            value={ordenamiento}
-                            onChange={(e) => setOrdenamiento(e.target.value)}
-                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    <div className="flex items-end">
+                        <button
+                            onClick={limpiarFiltros}
+                            className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg transition-colors"
                         >
-                            <option value="nombre">Nombre (A-Z)</option>
-                            <option value="precio-asc">Precio (menor a mayor)</option>
-                            <option value="precio-desc">Precio (mayor a menor)</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <Button variant="secondary" onClick={limpiarFiltros} className="w-full">
                             Limpiar filtros
-                        </Button>
+                        </button>
                     </div>
                 </div>
             </div>
 
-            <div className="mb-4 flex justify-between items-center">
-                <p className="text-gray-600">
-                    Mostrando {productosFiltrados.length} de {productos.length} productos
-                </p>
-            </div>
+            <p className="text-gray-600 mb-4">
+                Mostrando {productosMostrados.length} productos
+                {hayFiltros && ' (filtrados)'}
+            </p>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {productosFiltrados.map(producto => (
-                    <ProductCard
-                        key={producto.id}
-                        producto={producto}
-                        onClick={navegarAProducto}
-                    />
-                ))}
-            </div>
-
-            {productosFiltrados.length === 0 && (
-                <div className="text-center py-12">
-                    <div className="text-6xl mb-4">🔍</div>
-                    <p className="text-gray-500 text-xl mb-4">No se encontraron productos</p>
-                    <p className="text-gray-400 mb-4">
-                        {busqueda || filtro !== 'todos' 
-                            ? 'Intenta ajustar los filtros de búsqueda'
-                            : 'No hay productos disponibles en este momento'
-                        }
-                    </p>
-                    <Button onClick={limpiarFiltros}>
-                        Limpiar filtros
-                    </Button>
+            {productosMostrados.length === 0 ? (
+                <div className="text-center text-gray-500 py-8">
+                    No se encontraron productos con los filtros seleccionados
                 </div>
+            ) : (
+                <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                        {productosMostrados.map((producto) => (
+                            <ProductCard key={producto.id} producto={producto} />
+                        ))}
+                    </div>
+
+                    {totalPaginas > 1 && !hayFiltros && (
+                        <div className="flex justify-center items-center gap-2 mt-8">
+                            <button
+                                onClick={() => cambiarPagina(paginaActual - 1)}
+                                disabled={paginaActual === 1}
+                                className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Anterior
+                            </button>
+
+                            {generarNumerosPagina().map((numero) => (
+                                <button
+                                    key={numero}
+                                    onClick={() => cambiarPagina(numero)}
+                                    className={`px-4 py-2 rounded ${paginaActual === numero
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-gray-200 hover:bg-gray-300'
+                                        }`}
+                                >
+                                    {numero}
+                                </button>
+                            ))}
+
+                            <button
+                                onClick={() => cambiarPagina(paginaActual + 1)}
+                                disabled={paginaActual === totalPaginas}
+                                className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Siguiente
+                            </button>
+                        </div>
+                    )}
+                </>
             )}
         </div>
     );
-}
+};
 
 export default Products;
