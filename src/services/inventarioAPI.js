@@ -62,7 +62,7 @@ export const inventarioAPI = {
 
   createCategoria: async (nombre, descripcion) => {
     try {
-      const response = await api.post('/categorias/', {
+      const response = await api.post('/categorias/crear/', {
         nombre,
         descripcion
       });
@@ -155,30 +155,12 @@ export const inventarioAPI = {
 
   // ============== COMPRAS ==============
 
-  getCompras: async () => {
+  procesarCompra: async (items) => {
     try {
-      const response = await api.get('/compras/');
+      const response = await api.post('/comprar/', { items });
       return response.data;
     } catch (error) {
-      throw new Error('Error al obtener compras');
-    }
-  },
-
-  createCompra: async (compraData) => {
-    try {
-      const response = await api.post('/compras/', compraData);
-      return response.data;
-    } catch (error) {
-      throw new Error('Error al crear compra');
-    }
-  },
-
-  getCompraById: async (id) => {
-    try {
-      const response = await api.get(`/compras/${id}/`);
-      return response.data;
-    } catch (error) {
-      throw new Error('Error al obtener la compra');
+      throw new Error(error.response?.data?.error || 'Error al procesar la compra');
     }
   },
 };
