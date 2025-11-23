@@ -19,8 +19,8 @@ export const AuthProvider = ({ children }) => {
 
   // Verificar si hay token al iniciar
   useEffect(() => {
-    const access = localStorage.getItem('access');
-    const refresh = localStorage.getItem('refresh');
+    const access = localStorage.getItem('access_token');
+    const refresh = localStorage.getItem('refresh_token');
     const savedUser = localStorage.getItem('user');
 
     if (access && refresh && savedUser) {
@@ -45,9 +45,9 @@ export const AuthProvider = ({ children }) => {
 
       const data = await response.json();
 
-      // Guardar tokens
-      localStorage.setItem('access', data.access);
-      localStorage.setItem('refresh', data.refresh);
+      // Guardar tokens con los nombres correctos
+      localStorage.setItem('access_token', data.access);
+      localStorage.setItem('refresh_token', data.refresh);
 
       // Obtener información del usuario (incluyendo is_staff)
       try {
@@ -115,8 +115,8 @@ export const AuthProvider = ({ children }) => {
 
   // Logout
   const logout = () => {
-    localStorage.removeItem('access');
-    localStorage.removeItem('refresh');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
     setIsAuthenticated(false);
     setUser(null);
